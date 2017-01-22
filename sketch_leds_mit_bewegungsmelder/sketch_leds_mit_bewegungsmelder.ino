@@ -14,12 +14,12 @@
 
 #define DELAY_KEEP_ALIVE   30000   /* Wartezeit nach letzter Bewegung (ms) */
 #define DELAY_CHECK           20   /* Zeit die jede LED getestet wird (ms) */
-#define DELAY_DIMMER          25   /* Wartezeit zwischen 2 Farben (ms) */
 
 #define COLOR_RED            139   /* Roter Anteil der Farbe */
 #define COLOR_GREEN            0   /* Grüner Anteil der Farbe */
 #define COLOR_BLUE           139   /* Blauer Anteil der Farbe */
 
+#define FADE_DURATION       3500   /* Zeit die Farbübergänge dauern (ms) */
 
 unsigned int TIME_MOVEMENT   = 0;   
 bool PIXELS_ON               = false;
@@ -47,13 +47,15 @@ void loop() {
 
       if((timeCurrent - TIME_MOVEMENT) > DELAY_KEEP_ALIVE){
         PIXELS_ON = false;
-        pixelsReset();
+        int colorNew[3] = {0,0, 0};
+        pixelsFade(colorNew, FADE_DURATION);
       }
     }
   } else {
     if(false == PIXELS_ON){
       PIXELS_ON = true;
-      pixelsLightUpDimmed();
+      int colorNew[3] = {COLOR_RED,COLOR_GREEN, COLOR_BLUE};
+      pixelsFade(colorNew, FADE_DURATION);
     }
 
     TIME_MOVEMENT = millis();
@@ -61,10 +63,10 @@ void loop() {
 }
 
 void pixelsReset(){
-  uint32_t COLOR_BLACK = pixels.Color(0, 0, 0);
+  uint32_t colorBlack = pixels.Color(0, 0, 0);
 
   for(int pixel=0;pixel<PIXELS_CONNECTED;pixel++){
-    pixels.setPixelColor(pixel,COLOR_BLACK);
+    pixels.setPixelColor(pixel,colorBlack);
   }
   pixels.show();
 }
@@ -91,42 +93,55 @@ void pixelsCheck(){
   }
 }
 
-void pixelsLightUpDimmed(){
-  int totalSteps = getMaxColorValue();
 
-  int colorRedCurrent = 0;
-  int colorGreenCurrent = 0;
-  int colorBlueCurrent = 0;
+void pixelsLightUpColor(int colorRed, int colorGreen, int colorBlue){
+  uint32_t color = pixels.Color(colorRed, colorGreen, colorBlue);
+  for(int pixel=0;pixel<PIXELS_USE;pixel++){
+    pixels.setPixelColor(pixel, color);
+  }
+  pixels.show();
+}
+
+void pixelsFade(int colorTarget[], int duration){
+  uint32_t colorCurrentInt = pixels.getPixelColor(0);
   
-  for(int colorStep = 0;colorStep <= totalSteps;colorStep++){
-    if(colorRedCurrent < COLOR_RED){
-      colorRedCurrent++;
+  int colorCurrentRed = (colorCurrentInt >> 16) & 0xFF;
+  int colorCurrentGreen = (colorCurrentInt >> 8) & 0xFF;
+  int colorCurrentBlue = colorCurrentInt & 0xFF;
+  
+  int colorCurrent[] = {colorCurrentRed,colorCurrentGreen,colorCurrentBlue};
+  
+  int dimmDelay = int(duration/getStepCount(colorCurrent, colorTarget));
+  while(colorCurrent[0] != colorTarget[0] || colorCurrent[1] != colorTarget[1] || colorCurrent[2] != colorTarget[2]){
+    for(int index = 0;index < 3;index++){
+      if(colorCurrent[index] == colorTarget[index]){
+        continue;
+      }
+
+      if(colorCurrent[index] > colorTarget[index]){
+        colorCurrent[index]--;
+      } else {
+        colorCurrent[index]++;
+      }
     }
-    if(colorGreenCurrent < COLOR_GREEN){
-      colorGreenCurrent++;
-    }
-    if(colorBlueCurrent < COLOR_BLUE){
-      colorBlueCurrent++;
-    }
-    
-    uint32_t colorGenerated = pixels.Color(colorRedCurrent, colorGreenCurrent, colorBlueCurrent);
-    for(int i=0;i<PIXELS_USE;i++){
-      pixels.setPixelColor(i, colorGenerated);
-    }  
-    pixels.show();
-    delay(DELAY_DIMMER);
+
+    pixelsLightUpColor(colorCurrent[0], colorCurrent[1], colorCurrent[2]);
+    delay(dimmDelay);
   }
 }
 
-int getMaxColorValue(){
-  int values[3] = {COLOR_RED,COLOR_GREEN,COLOR_BLUE};
+int getStepCount(int from[], int to[]){
   int maxInteger = 0;
 
   for(int index = 0;index < 3;index++){
-    maxInteger = max(maxInteger, values[index]);
+    int diff = to[index] - from[index];
+    if(0 > diff){
+      diff = diff * -1;
+    }
+    
+    maxInteger = max(maxInteger, diff);
   }
 
   return maxInteger;
 }
-
 
